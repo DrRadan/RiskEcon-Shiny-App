@@ -1,0 +1,198 @@
+---
+title: ""
+author: ""
+date: ""
+output: html_document
+runtime: shiny
+resource_files:
+- SLAITS_data.RData
+---
+
+## Explorations of the National Survey of Childrens Health (NSCH, subset of SLAITS)
+
+#### What are the SLAITS and NSCH datasets?
+The State and Local Area Integrated Telephone Survey (SLAITS) is a cross-ectional survey conducted by the Center for Disease Control (CDC), USA, in the years 2003-2004, 2007-2008, and 2011-2012. The goal of the survey is to collect healthcare data at the state and local level. NSCH is a subset of the SLAITS data, with information specifically pertaining to the healthcare needs among children.
+
+As with any survey, the researcher using these data needs to be careful to monitor for non-response and self-reporting problems.
+
+#### Why am I interested in these data?
+At the RiskEcon Lab, we are working on using the public digital footprints we all leave behind (eg Twitter, FourSquare) as new indicators of behavioral trends associated with obesity and diabetes in the USA. I am particularly interested in obesity among children and teenagers for two reasons:
+
+1. The raise in obesity among children and teenagers since the 80's has led to the appearence of Type II (non-inherited) diabetes in these groups. This is a ticking health bomb, threatening to burden the health system, incapacitate the future labor force and weaken social cohesion in the most affected communities.
+2. Most policy and other effords that try to control this ["obesity epidemic"](https://www.ncbi.nlm.nih.gov/books/NBK44206/) are focusing on children, aiming to prevent future problems but also because programs can be enforced through the public school system.
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, echo = FALSE, message=FALSE}
+library("dplyr")
+library("ggplot2")
+library("ggmap")
+load("SLAITS_data.RData")
+```
+
+
+This is a general overview of these data:
+
+
+##### *Interactive map : Obesity in USA teens*
+
+```{r, echo = F, message=FALSE}
+
+years <-   c("2003-2004","2007-2008","2011-2012")
+income <-  c("All", "At or below 100% of poverty line", "Above 100% and below or at 133% of poverty line", 
+                                "Above 133% and below or at 150% of poverty line", "Above 150% and below or at 185% of poverty line", 
+                                "Above 185% and below or at 200% of poverty line", "Above 200% and below or at 300% of poverty line",
+                                "Above 300% and below or at 400% of poverty line", "Above 400% of poverty line")
+education <- c("All", "Less that highschool", "Highschool graduate", "More than highschool") 
+
+us <- c(left = -125, bottom = 25, right = -67, top = 47)
+map <- get_stamenmap(us, zoom = 4, maptype = "toner-lite")
+state_map <- map_data("state")
+colnames(state_map)[5]<-"STATE"
+
+##################################### Input selections ####################################
+
+inputPanel(
+selectInput("dt", "Choose a dataset:",
+            choices = years, selected = years[3]),
+
+selectInput("sex","Choose child's sex:",
+            choices = c("Female", "Male", "Any"), selected = "Any"),
+
+selectInput("inc","Choose household income:",
+            choices = income, selected = income[1]),
+
+selectInput("edu","Choose parent education level:",
+            choices = education, selected = education[1]),
+
+selectInput("lan","Choose primary language at home:",
+            choices = c("Any", "English", "Not english"), selected = "Any"),
+
+sliderInput("age", label = "Select an age range (if the cursors overlap a single age is selected)",
+              min = 10, max = 17, value = c(10,17), step = 1),
+
+inputPanel(h5("Displayed output"),
+           checkboxInput("u", label = "% underweight",value =F),
+           checkboxInput("n", label = "% normal weight",value =F),
+           checkboxInput("o", label = "% obese",value =T),
+           checkboxInput("mo", label = "% morbidly obese",value =T))
+)
+```
+
+
+```{r, echo=F}
+##################################### Reactive data  ####################################
+# For map, all states included always
+dat <- reactive({
+  
+  #select dataset
+  if (input$dt == "2003-2004") {
+  temp = n2003
+  }else if (input$dt == "2007-2008") {
+    temp = n2007
+  }else {
+    temp = n2011
+  }
+  
+  #filter by sex (if necessary)
+  if (input$sex == "Female"){
+    temp<-filter(temp, child_sex == "F")
+  }else if (input$sex =="M"){
+    temp<-filter(temp, child_sex=="M")
+  }else{temp <- temp}
+  #filter by household income (if necessary)
+  if (input$inc == "At or below 100% of poverty line"){
+    temp<-filter(temp, Income_class=="A")
+  }
+  else if (input$inc == "Above 100% and below or at 133% of poverty line"){
+    temp<-filter(temp, Income_class=="B")
+  }else if (input$inc == "Above 133% and below or at 150% of poverty line"){
+    temp<-filter(temp, Income_class=="C")
+  }else if (input$inc == "Above 150% and below or at 185% of poverty line"){
+    temp<-filter(temp, Income_class=="D")
+  }else if (input$inc == "Above 185% and below or at 200% of poverty line"){
+    temp<-filter(temp, Income_class=="E")
+  }else if (input$inc == "Above 200% and below or at 300% of poverty line"){
+    temp<-filter(temp, Income_class=="F")
+  }else if (input$inc == "Above 300% and below or at 400% of poverty line" ){
+    temp<-filter(temp, Income_class=="G")
+  }else if (input$inc == "Above 400% of poverty line"){
+    temp<-filter(temp, Income_class=="H")
+  }else {temp <- temp}
+
+  #filter by parent education level (if there is a specific selection)
+  if (input$edu == "Less that highschool"){
+    temp <- filter(temp, EDUCATION_LVL == "hischool-")
+  }else if (input$edu == "Highschool graduate"){
+    temp <- filter(temp, EDUCATION_LVL == "hischool")
+  }else if (input$edu == "More than highschool"){
+    temp <- filter(temp, EDUCATION_LVL == "hischool+")
+  }else{temp <- temp}
+  
+  #filter by primary language at home (if there is a specific selection)
+  if (input$lan == "English"){
+    temp <- filter(temp, LANGUAGE == "ENG")
+  }else if (input$lan == "Not english"){
+    temp <- filter(temp, LANGUAGE == "NENG")
+  }else{temp <- temp}
+
+  #filter by age range
+  temp <-filter(temp, AGEYR_CHILD >= input$age[1] & AGEYR_CHILD <= input$age[2])
+  
+  #Select data to visualize
+  if (input$u == T){
+    u_ <- filter(temp, BMI_category== "U")
+  }else {
+    u_ <- temp[0,]
+  }
+  if (input$n == T){
+    n_ <- filter(temp, BMI_category== "N")
+  }else {
+    n_ <- temp[0,]
+  }
+  if (input$o == T){
+    o_ <- filter(temp, BMI_category== "O")
+  }else {
+    o_ <- temp[0,]
+  }
+  if (input$mo == T){
+    mo_ <- filter(temp, BMI_category== "MO")
+  }else {
+    mo_ <- temp[0,]
+  }
+  temp <- union(u_,n_) %>% union(o_) %>% union(mo_)
+  
+  temp$SUM <-temp$COUNTS*temp$WEIGHT
+  temp <- tbl_df(xtabs(formula= ~STATE, data = temp))
+  colnames(temp)<-c("STATE","total")
+  temp['total'] <-  temp['total']/sum(temp['total'])*100
+  
+  temp <- tbl_df(inner_join(state_map, temp, by = "STATE"))
+
+  return(temp)
+  
+  })
+
+```
+
+```{r, echo=F, message=FALSE}
+##################################### Reactive output  ####################################
+# map
+renderPlot({
+  ggplot(data = dat()) + 
+  geom_polygon(aes(x = long, y = lat, fill = total, group = group), color = "white") +
+  coord_fixed(1.3) +
+ # guides(fill=FALSE) +
+  theme(axis.ticks = element_blank(),
+        axis.text= element_blank(),
+        axis.title = element_blank(),
+        panel.background =element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position="right") +
+        scale_fill_gradient(low="lightyellow", high="purple4")})
+
+```

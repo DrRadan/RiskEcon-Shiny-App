@@ -1,0 +1,316 @@
+---
+title: 
+author: 
+date: 
+output: html_document
+runtime: shiny
+resource_files:
+- Rudd_Policy_DB.csv
+- BRFSS_land.RData
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, echo=F, message=FALSE}
+
+#Import all libraries
+library(ggplot2)
+library(dplyr)
+library(ggmap)
+```
+
+```{r, echo = F, message=F}
+############################## Create all needed vectors and  data ##############################
+
+#1. Policy data
+rudd <- read.csv("Rudd_Policy_DB.csv",na.strings=c("", "NA"))
+rudd <- na.omit(rudd[,1:5]) #removes NAs (in Topic) and ignores the last column with links to text (might be useful later but there are a lot of NAs I don't want to deal with)
+
+### 1. Extract policy topic
+topics <- c("All topics",levels(rudd$Topic))
+
+### 2. Extract years
+years <- c("All years", unique(rudd$Year))
+
+### 3. Extract states
+#For some states, metropolitan areas are annotated separately. These are of the format "State - area". Here I remove the area udentifier.
+rudd$State.Federal<- unlist(strsplit(as.character(rudd$State.Federal),' - .*'))
+#Also there is information about Navaho nation and Puerto Rico. Remove them.
+a <-c()
+for (i in 1:nrow(rudd)){
+  if (rudd$State.Federal[i]=="Puerto Rico" || rudd$State.Federal[i]=="Navajo Nation") {a <- c(a, i)}}
+rudd<- rudd[-a,]
+states <- c("All states", unique(rudd$State.Federal))
+
+#2. Map data
+us <- c(left = -125, bottom = 25, right = -67, top = 47)
+map <- get_stamenmap(us, zoom = 4, maptype = "toner-lite")
+state_map <- map_data("state")
+colnames(state_map)[5]<-"State"
+
+```
+
+
+#Health and obesity in the US
+It is alarming that the health of Americans is deteriorating. The main reason behind this negative trend in the increased prevalence and earlier onsets of degenerative diseases, such as heart disease, stroke, and diabetes. These are also called "lifestyle diseases" as their prevalence and onset is significantly dependend on lifestyle choices (eg. healthy eating, excersising etc). A common precondition for these diseases is the Metabolic Syndrome, that is commonly characterized, among others, by upper body obesity (approximated by measurements of the BMI index). [Obesity rates](http://stateofobesity.org/obesity-rates-trends-overview/) in the US have been increasing since the 80's. 
+
+### 1. What are the legislative initiatives targeting obesity and metabolic syndrome?
+Since the Surgeon General's initiative to [Prevent and Decrease Obesity](https://www.ncbi.nlm.nih.gov/books/NBK44206/) in 2001, many policies have been discussed at the local (state) level, that aim to address the problem. However, not all years or all states have been equally productive. 
+
+2013 was the year with the highest volume of obesity- and healthy lifestyle-related policies, 1358, or 76% of all policies recorded by the Rudd Center between 2011-2014. New York was the most productive, with 16.6% of the year's policies discussed there. This is also the year the Mayor Bloomberg introduced the controvercial [Sugary Drinks Portion Cap Rule](https://en.wikipedia.org/wiki/Sugary_Drinks_Portion_Cap_Rule).
+
+The second most busy year was 2014, with 364 bills discussed (20.4% of total). New Jersey, California and Washington states, are the only ones to have discussed such bills every year between 2011-2014.
+(Data from Rudd Center's [Legislation Database](http://www.uconnruddcenter.org/legislation-database))
+
+```{r, echo = F}
+##################################### Input selections ####################################
+inputPanel(
+#  selectInput("year", "Choose a year:",
+#            choices = years, selected = years[1])
+selectInput("state","Choose a state:",
+            choices = states, selected = states[1]),
+
+sliderInput("year", label = "Please select a year range (if the cursors overlap a single year is selected)",
+              min = 2011, max = 2015, value = c(2011,2015), step = 1)
+)
+```
+
+```{r, echo=F}
+##################################### Reactive data  ####################################
+temp <- tbl_df(rudd)
+#1. For barplot
+dat1 <- reactive({
+    temp <- temp %>%
+    filter(Year >= input$year[1] & Year <= input$year[2])
+    
+  if (input$state!="All states"){
+    temp <- temp %>%
+    filter(State.Federal== input$state)
+  }
+  Data <- tbl_df(xtabs(formula= ~ Topic, data = temp))
+  colnames(Data) <- c("Topic", "Number_of_policies_discussed")
+  print(Data) # Somehow this line fixes the Error:ggplot2 doesn't know how to deal with data of class character
+  })
+
+#2. For map, all states included always
+dat2_1 <- reactive({
+  temp <- temp %>%
+  filter(Year >= input$year[1] & Year <= input$year[2])
+  Data <- tbl_df(xtabs(formula= ~ State.Federal, data = temp))
+  colnames(Data) <- c("State", "Number_of_policies_discussed")
+  #Make all states lowercase for compatibility with map data element
+  Data$State<- tolower(Data$State)
+   # Somehow this line fixes the Error:ggplot2 doesn't know how to deal with data of class character
+  #Add number of policies per state to map element according to input year
+  state_map <- inner_join(state_map, Data, by = "State")
+  return(state_map)
+  })
+
+  #for highlighting specific (selected) states at the map (in the year selected)
+dat2_2 <- reactive({
+  if (input$state!="All states"){
+    temp <- state_map %>%
+    filter(State== tolower(input$state))
+  } else {
+    temp <- state_map[1,]
+  }
+  })
+```
+
+
+```{r, echo=F, message=FALSE}
+##################################### Reactive output  ####################################
+#Policy barplot
+
+ renderPlot({ggplot(data = dat1(), aes(Topic, Number_of_policies_discussed)) +
+          geom_bar(stat = "identity", aes(fill = Topic)) +
+          theme(axis.ticks.x = element_blank(),
+              axis.text.x = element_blank(),
+              axis.title.y = element_text(),
+              legend.position="top")},height = 300,width = 800)
+
+#Policy map
+renderPlot({
+  ggplot(data = dat2_1()) + 
+  geom_polygon(aes(x = long, y = lat, fill = Number_of_policies_discussed, group = group), color = "white") +
+    #Make red border highlighted if state is selected
+  geom_path(data = dat2_2() , colour = "red", aes(x = long, y = lat))+
+  coord_fixed(1.3) +
+ # guides(fill=FALSE) +
+  theme(axis.ticks = element_blank(),
+        axis.text= element_blank(),
+        axis.title = element_blank(),
+        panel.background =element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position="right") +
+        scale_fill_gradient(low="lightyellow", high="purple4")},height=300, width=800)
+```
+
+
+###2. How does the volume of policies discussed in each state correlates with the magnitude of the problem?
+
+There have been more than 6,000 state-level policies introduced since 2001. The [Rudd Center's Legislation database](http://www.uconnruddcenter.org/legislation-database), which was used for these visualizations, contains data between 2011 and 2014. The data below were modeled with LOESS and the shaded area represents the 0.95 confidence interval.
+
+As New York had a disproportionate number of policies introduced and processed most years, you can exclude it from the analysis using the option below.
+
+These data only intent to demonstrate the type of legislative information available. A more complete and better annotated dataset from  CDC's [Chronic Disease State Policy Tracking System](https://nccd.cdc.gov/CDPHPPolicySearch/default.aspx) would probably be more informative. Also there is text associated with each legislation in the database, not used here, but possibly interesting for feature extraction.
+(Data from Behavioral Risk Factor Surveillance System [BRFSS](https://www.cdc.gov/brfss/index.html), CDC)
+
+```{r, echo=F}
+#2. BRFSS data
+load("BRFSS_land.RData")
+land2011 <- cbind(land2011, Year = rep(2011, nrow(land2011)))
+land2012 <- cbind(land2012, Year = rep(2012, nrow(land2012)))
+land2013 <- cbind(land2013, Year = rep(2013, nrow(land2013)))
+land2014 <- cbind(land2014, Year = rep(2014, nrow(land2014)))
+
+states2 <- c("No, keep all states", unique(rudd$State.Federal))
+years <- c("All years", "2014", "2013", "2012", "2011")
+ages <- c("All ages", levels(land2011$Age)[-7])
+edu <- c( "All levels", "No school","Elementary school", "Some high school" ,"High school graduate","Some college or techical school","College graduate")
+
+
+```
+
+```{r, echo=F}
+#3. For scatterplot
+
+##################################### Inpout selections  ####################################
+inputPanel(
+selectInput("year2", "Choose a year:",
+           choices = years, selected = years[1]),
+selectInput("age","Choose age range:",
+            choices = ages, selected=ages[1]),
+selectInput("edu","Choose educational level:",
+            choices = edu, selected=edu[1]),
+selectInput("state2","Is there a state you want to remove?",
+            choices = states2, selected=states2[1])
+)
+inputPanel(
+  checkboxInput("bmi", label = "BMI",value =T),
+  checkboxInput("diab", label = "Diabetes",value =T)
+)
+
+```
+
+
+```{r, echo=F}
+##################################### Reactive data  ####################################
+dat3 <- reactive({
+#BRFSS table
+  if (input$year2== "All years") {
+  t11 <- tbl_df(land2011)
+  t12 <- tbl_df(land2012)
+  t13 <- tbl_df(land2013)
+  t14 <- tbl_df(land2014)
+  tempY <- bind_rows(land2011, 
+                    bind_rows(land2012,
+                              bind_rows(land2013,
+                                        bind_rows(land2014)
+                                        )
+                    )
+  )
+  rm(t11,t12,t13,t14)
+  # Merge duplicates and add their Count values
+  
+  } else {
+  if (input$year2=="2011") {
+    tempY <- tbl_df(land2011)
+    } else {
+    if (input$year2=="2012") {
+      tempY <- tbl_df(land2012)
+      } else {
+      if (input$year2=="2013") {
+        tempY <- tbl_df(land2013)
+        } else {
+        if (input$year2=="2014") {
+          tempY <- tbl_df(land2014)
+          } 
+        }
+      }
+    }
+  }
+
+  #Subset by age
+  if (input$age!="All ages"){
+    tempY <- tempY %>%
+    filter(Age== input$age)
+  }
+  #subset by education level
+  if (input$edu!="All levels"){
+    tempY <- tempY %>%
+    filter(Education.level== input$edu)
+  }
+  #subset by State
+  if (input$state2!="No, keep all states"){
+    tempY <- tempY %>%
+    filter(State != input$state2)
+  }
+  #The type of output in the plot
+    if (input$bmi == T & input$diab == T){
+      tempY <- tempY[c("State","Year","Both","Count")]
+    }else {
+    if (input$bmi == F & input$diab == T){
+      tempY <- tempY[c("State","Year","Diabetes","Count")]
+    }else {
+    if (input$bmi == T & input$diab == F){
+      tempY <- tempY[c("State","Year","BMI","Count")]
+    }else {
+    if (input$bmi == F & input$diab == F){
+      tempY <- tempY[c("State","Year","Both","Count")]}
+    } 
+    }
+    }
+  #harmonize the colnames
+  colnames(tempY) <- c("State","Year","Metric","Count")
+  
+  #summarize
+  dots <- lapply(c("Year","State"),as.symbol)
+  tempY <- tempY %>%
+    group_by_(.dots = dots) %>%
+    mutate(N=length(Metric)) %>%
+    mutate(SUM=sum(Metric, na.rm=T)) %>%
+    mutate(percent=(SUM/N)*100) %>%
+    select(one_of("State","Year","percent")) %>%
+    ungroup() %>%
+    distinct()
+  rm(dots)
+##Subset and summarize the policy data
+    tempX <- tbl_df(rudd)[c("Year","State.Federal")]
+    if (input$year2!="All years") {
+    temp <- temp %>%
+    filter(Year >= input$year2)}
+ 
+  colnames(tempX) <- c("Year","State")
+  dots <- lapply(c("Year","State"),as.symbol)
+  tempX <- tbl_df(tempX) %>%
+    group_by_(.dots = dots) %>%
+    count_()
+#The reactive output is the merged formatted tables 
+  table<-full_join(tempX, tempY, by=c("State","Year"))
+  rm(tempX,tempY,dots)
+  print("#############################################################################")
+  return(table)
+})
+```
+
+
+```{r, echo=F}
+
+##################################### Reactive output  ####################################
+#Policy scatterplot
+
+renderPlot({ggplot(data = dat3(), aes(n,percent)) +
+    stat_smooth(method=loess)+
+    labs(x="Number of bills (per State)",y="% pervalence of pathology (obesity and/or diabetes)")+
+    geom_point()},height = 300,width = 800)
+
+renderText({
+  if (input$bmi == F & input$diab == F){
+  textOutput("Please select Diabets, BMI, or both. One field at least needs to be selected")}
+  })
+```
+
