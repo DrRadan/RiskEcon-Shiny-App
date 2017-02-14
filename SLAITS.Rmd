@@ -96,18 +96,18 @@ dat <- reactive({
   }else {
     temp = n2011
   }
-  
+
   #filter by sex (if necessary)
   if (input$sex == "Female"){
     temp<-filter(temp, child_sex == "F")
   }else if (input$sex =="M"){
     temp<-filter(temp, child_sex=="M")
   }else{temp <- temp}
+
   #filter by household income (if necessary)
   if (input$inc == "At or below 100% of poverty line"){
     temp<-filter(temp, Income_class=="A")
-  }
-  else if (input$inc == "Above 100% and below or at 133% of poverty line"){
+  }else if (input$inc == "Above 100% and below or at 133% of poverty line"){
     temp<-filter(temp, Income_class=="B")
   }else if (input$inc == "Above 133% and below or at 150% of poverty line"){
     temp<-filter(temp, Income_class=="C")
@@ -125,13 +125,13 @@ dat <- reactive({
 
   #filter by parent education level (if there is a specific selection)
   if (input$edu == "Less that highschool"){
-    temp <- filter(temp, EDUCATION_LVL == "hischool-")
+    temp <- filter(temp, EDUCATION_LVL == "highschool-")
   }else if (input$edu == "Highschool graduate"){
-    temp <- filter(temp, EDUCATION_LVL == "hischool")
+    temp <- filter(temp, EDUCATION_LVL == "highschool")
   }else if (input$edu == "More than highschool"){
-    temp <- filter(temp, EDUCATION_LVL == "hischool+")
+    temp <- filter(temp, EDUCATION_LVL == "highschool+")
   }else{temp <- temp}
-  
+
   #filter by primary language at home (if there is a specific selection)
   if (input$lan == "English"){
     temp <- filter(temp, LANGUAGE == "ENG")
@@ -141,7 +141,7 @@ dat <- reactive({
 
   #filter by age range
   temp <-filter(temp, AGEYR_CHILD >= input$age[1] & AGEYR_CHILD <= input$age[2])
-  
+
   #Select data to visualize
   if (input$u == T){
     u_ <- filter(temp, BMI_category== "U")
@@ -163,17 +163,17 @@ dat <- reactive({
   }else {
     mo_ <- temp[0,]
   }
-  temp <- union(u_,n_) %>% union(o_) %>% union(mo_)
-  
+  temp <- bind_rows(u_,n_) %>% bind_rows(o_) %>% bind_rows(mo_)
   temp$SUM <-temp$COUNTS*temp$WEIGHT
   temp <- tbl_df(xtabs(formula= ~STATE, data = temp))
   colnames(temp)<-c("STATE","total")
   temp['total'] <-  temp['total']/sum(temp['total'])*100
   
+
   temp <- tbl_df(inner_join(state_map, temp, by = "STATE"))
 
   return(temp)
-  
+
   })
 
 ```
@@ -181,11 +181,12 @@ dat <- reactive({
 ```{r, echo=F, message=FALSE}
 ##################################### Reactive output  ####################################
 # map
+
 renderPlot({
   ggplot(data = dat()) + 
   geom_polygon(aes(x = long, y = lat, fill = total, group = group), color = "white") +
   coord_fixed(1.3) +
- # guides(fill=FALSE) +
+  #guides(fill=FALSE) +
   theme(axis.ticks = element_blank(),
         axis.text= element_blank(),
         axis.title = element_blank(),

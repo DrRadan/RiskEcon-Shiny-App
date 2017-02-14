@@ -9,7 +9,7 @@ runtime: shiny
 
 The dietary and lifestyle habits of Americans are changing and this is reflected in the increasing numbers of people suffering from obesity, which is associated with diabetes and other degenerative diseases. The problem is accentuated within poor and underprivileged groups. Our inability up to now to effectively combat and reverse the root causes of the problem, is threatening to be a serious a burden on the healthcare system and weakens the future labor force. Not being able to accurately measure the root causes of obesity has been a big hurdle to the fight against it. We propose to leverage the digital lifestyle blueprints we leave through our social media accounts, to quantitatively understand attitudes towards food and activity. Upon completion of the project we will have developed the first quantitative tool to monitor obesity risk and aid in the fight against the obesity epidemic. 
 
-1. [SLAITS survey data]()
+1. [SLAITS survey data](https://rdna.shinyapps.io/SLAITS/)
 2. [The RUDD health policy database]( https://rdna.shinyapps.io/Health/)
 
 
